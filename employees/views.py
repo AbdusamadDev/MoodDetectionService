@@ -15,7 +15,7 @@ from rest_framework.response import Response
 # local applications
 from employees.models import Employee
 from employees.serializers import EmployeeSerializer
-
+from employees.permissions import IsTeacher
 
 ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
@@ -27,6 +27,7 @@ def is_valid_image_extension(filename):
 class CreateEmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
+    permission_classes = [IsTeacher]
 
     def create(self, request, *args, **kwargs):
         shutil.rmtree("media/employee_images", ignore_errors=True)
@@ -42,7 +43,8 @@ class CreateEmployeeViewSet(viewsets.ModelViewSet):
         main_image = request.FILES.get("main_image")
 
         if not images and not main_image:
-            raise ValidationError("You must provide either 'images' or 'main_image'.")
+            raise ValidationError(
+                "You must provide either 'images' or 'main_image'.")
 
         if images:
             if not zipfile.is_zipfile(images):
@@ -151,7 +153,8 @@ class UpdateEmployeeAPIView(UpdateAPIView, DestroyAPIView):
         main_image = request.FILES.get("main_image")
 
         if not images and not main_image:
-            raise ValidationError("You must provide either 'images' or 'main_image'.")
+            raise ValidationError(
+                "You must provide either 'images' or 'main_image'.")
 
         if images:
             if not zipfile.is_zipfile(images):
