@@ -5,6 +5,11 @@ from FaceClass import FaceDetector
 from models import BaseModel
 import os
 import asyncio
+import torch
+import tensorflow as tf
+
+
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -85,7 +90,6 @@ async def handle_camera_ex(idx, video_capture, detector, user_dict, camera_urls)
         return
     except Exception as e:
         logging.error(f"Ошибка при обработке видеозахвата: {e}")
-        video_capture.release()
         return
 
     cam_id = camera_urls[idx]
@@ -102,7 +106,6 @@ async def handle_camera(idx, video_capture, detector, user_dict, camera_urls):
         return
     except Exception as e:
         logging.error(f"Ошибка при обработке видеозахвата: {e}")
-        video_capture.release()
         return
 
     cam_id = camera_urls[idx]
@@ -110,7 +113,7 @@ async def handle_camera(idx, video_capture, detector, user_dict, camera_urls):
 
 async def initialize():
     cam_data = BaseModel()
-    camera_urls = [cam[2] for cam in cam_data.get("camera_ipaddressmodel")]
+    camera_urls = ["http://192.168.4.49:4747/video"]
     
     if not os.path.exists(ROOT_DIR):
         os.makedirs(ROOT_DIR)

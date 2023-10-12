@@ -10,6 +10,8 @@ import faiss
 import threading
 from imutils.video import VideoStream
 
+tf.config.set_visible_devices([], 'GPU')
+torch.backends.cudnn.enabled = False
 class FaceDetector:
     def __init__(self, root_dir, model_weights):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -48,37 +50,6 @@ class FaceDetector:
         self.emotion = ""
         self.user_id = ""
         self.video_captures = []
-
-    def add_camera(self, urls):
-       
-        for url in urls:
-            print(f"Adding cameras: {urls}")
-            try:
-                video_stream = VideoStream(url).start()
-                self.video_captures.append(video_stream)
-                print(f"Захват видео для {url} открыт успешно")
-            except Exception as e:
-                print(f"Ошибка при открытии видеозахвата для {url}: {e}")
-                continue
-
-    def start_all_video_captures(self):
-        threads = []
-        for video_capture in self.video_captures:
-            try:
-                thread = threading.Thread(
-                    target=self.detect_and_display_faces, args=(video_capture,)
-                )
-                thread.start()
-                threads.append(thread)
-            except Exception as e:
-                print(f"Ошибка при создании потока: {e}")
-
-        for thread in threads:
-            try:
-                thread.join()
-            except Exception as e:
-                print(f"Ошибка при ожидании завершения потока: {e}")
-
     def create_emotion_model(self):
         try:
             gpus = tf.config.experimental.list_physical_devices("GPU")
@@ -160,66 +131,58 @@ class FaceDetector:
         return index, known_face_names
 
 
-    def detect_and_display_faces(self, video_stream):
-        while True:
-            try:
-                frame = video_stream.read()
-                if frame is None:
-                    print("Unable to read frame")
-                    continue
-            except Exception as e:
-                print(f"Unable to read frame: {e}")
-                continue
-            try:
-                faces = self.face_model.get(frame)
-                if faces is None:
-                    print("Model could not process frame")
-                    continue
-            except Exception as e:
-                print(f"Error in face recognition: {e}")
-                continue
+    def detect_faces_from_frame(self, frame):
+        try:
+            faces = self.face_model.get(frame)
+            if faces is None:
+                print("Model could not process frame")
+                return
+        except Exception as e:
+            print(f"Error in face recognition: {e}")
+            return
 
-            if faces:
-                for face in faces:
-                    box = face.bbox.astype(int)
-                    face_image = frame[box[1]:box[3], box[0]:box[2]]
-                    if face_image.size == 0:
-                        continue
-                    face_image = cv2.resize(face_image, (640, 480))
-                    face_image = face_image / 255.0
-                    face_image = (
-                        torch.tensor(face_image.transpose((2, 0, 1)))
-                        .float()
-                        .to(self.device)
-                        .unsqueeze(0)
-                    )
-                    embedding = face.embedding  
-                    
-                    D, I = self.index.search(embedding.reshape(1, -1), 1)
-                    print(D[0, 0])
-                
-                    if D[0, 0] < 600:
-                        name = self.known_face_names[I[0, 0]]
-                    else:
-                        name = False
-                    
-                    face_gray = cv2.cvtColor(
-                        frame[box[1] : box[3], box[0] : box[2]], cv2.COLOR_BGR2GRAY
-                    )
-                    face_gray = cv2.resize(face_gray, (48, 48))
-                    face_gray = face_gray / 255.0
-                    face_gray = np.reshape(face_gray, (1, 48, 48, 1))
-                    emotion = self.emotion_labels[
-                        np.argmax(self.emotion_model.predict(face_gray, verbose=0))
-                    ]
-                    yield {
-                        "time": str(datetime.datetime.now()).split(".")[0],
-                        "user_id": name,
-                        "emotion": emotion,
-                    }
-            else:
-                yield {
+        results = []
+
+        if faces:
+            for face in faces:
+                box = face.bbox.astype(int)
+                face_image = frame[box[1]:box[3], box[0]:box[2]]
+                if face_image.size == 0:
+                    continue
+                face_image = cv2.resize(face_image, (640, 480))
+                face_image = face_image / 255.0
+                face_image = (
+                    torch.tensor(face_image.transpose((2, 0, 1)))
+                    .float()
+                    .to(self.device)
+                    .unsqueeze(0)
+                )
+                embedding = face.embedding  
+                D, I = self.index.search(embedding.reshape(1, -1), 1)                
+                if D[0, 0] < 600:
+                    name = self.known_face_names[I[0, 0]]
+                else:
+                    name = False
+
+                face_gray = cv2.cvtColor(
+                    frame[box[1] : box[3], box[0] : box[2]], cv2.COLOR_BGR2GRAY
+                )
+                face_gray = cv2.resize(face_gray, (48, 48))
+                face_gray = face_gray / 255.0
+                face_gray = np.reshape(face_gray, (1, 48, 48, 1))
+                emotion = self.emotion_labels[
+                    np.argmax(self.emotion_model.predict(face_gray, verbose=0))
+                ]
+                results.append({
                     "time": str(datetime.datetime.now()).split(".")[0],
-                    "user_id": False,
-                    "emotion": None,
-                }
+                    "user_id": name,
+                    "emotion": emotion,
+                })
+        else:
+            results.append({
+                "time": str(datetime.datetime.now()).split(".")[0],
+                "user_id": False,
+                "emotion": None,
+            })
+
+        return results

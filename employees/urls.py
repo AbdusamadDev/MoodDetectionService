@@ -16,10 +16,10 @@ urlpatterns = [
         name="employee-list",
     ),
     path(
-        "<str:employee_id>/delete/",
+        "<int:pk>/delete/",
         DeleteEmployeeViewSet.as_view(),
         name="employee-detail",
     ),
     path("list/", ListEmployeeViewSet.as_view({"get": "list"})),
-    path("<str:employee_id>/edit/", UpdateEmployeeAPIView.as_view()),
+    path("<int:pk>/edit/", UpdateEmployeeAPIView.as_view()),
 ]

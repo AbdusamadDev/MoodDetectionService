@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Face Detector</title>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        var socket = io.connect('http://localhost:5000');
+        
+        socket.on('connect', function() {
+            console.log('Connected to server');
+        });
+
+        socket.on('frame_data', function(data) {
+            console.log(data);  // Log received data to browser console
+        });
+    </script>
+</body>
+</html>
