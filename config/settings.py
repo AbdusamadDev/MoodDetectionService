@@ -16,10 +16,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "corsheaders",
-    'api.apps.ApiConfig',
-    "employees",
-    "camera",
-    "stats"
+    'api',
 ]
 
 MIDDLEWARE = [
@@ -51,15 +48,19 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / "db.sqlite3",
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': 'MoodDetectionService',
+        'USER': 'postgres',
+        'PASSWORD': '2005',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 
 LANGUAGES = [
-    ("ru", "Russian"),
+    ("uz", "Uzbek"),
 ]
-LANGUAGE_CODE = 'ru'
+LANGUAGE_CODE = 'uz'
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
