@@ -22,6 +22,7 @@ class FaceTrainer:
         print(self.index)
 
     def load_face_encodings(self, root_dir):
+        print("Loading face encodings at: ", root_dir, "\n\n\n")
         known_face_encodings = []
         known_face_names = []
         for dir_name in os.listdir(root_dir):

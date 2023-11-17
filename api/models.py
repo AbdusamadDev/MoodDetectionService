@@ -3,7 +3,7 @@ from django.core.files.storage import FileSystemStorage
 
 
 def employee_image_path(instance, filename):
-    return f'criminals/{instance.pk}/main.jpg'
+    return f'employees/{instance.pk}/main.jpg'
 
 
 class Employee(models.Model):
@@ -30,3 +30,11 @@ class Employee(models.Model):
                 old_path = self.image.name
                 self.image.save(new_path, storage.open(old_path))
                 storage.delete(old_path)
+
+
+class Camera(models.Model):
+    name = models.CharField(max_length=100)
+    url = models.URLField(max_length=150, null=False)
+    image = models.ImageField(upload_to='media/cameras/', blank=True)
+
+

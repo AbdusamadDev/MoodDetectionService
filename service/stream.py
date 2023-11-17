@@ -1,3 +1,4 @@
+import torch
 import asyncio
 import json
 import time
@@ -7,14 +8,11 @@ from datetime import datetime
 import websockets
 import cv2
 import numpy as np
-from geopy.distance import geodesic
+# from geopy.distance import geodesic
 from imutils.video import VideoStream
 import os
 
-from tensorflow.keras.applications import VGG16
-from tensorflow.keras.layers import Dense, Flatten, Dropout
-from tensorflow.keras.models import Model
-
+import tensorflow as tf
 from models import Database
 from path import absolute_path
 from train import FaceTrainer
@@ -23,21 +21,14 @@ from utils import save_screenshot, host_address
 tracemalloc.start()
 
 
+# def convert_mood_to_description(mood):
+#     mood_descriptions = ["Happy", "Sad", "Angry", "Surprised", "Neutral", "Scared", "Disgusted"]
+#     if mood is None:
+#         return "Unknown"
+#     return mood_descriptions[mood] if 0 <= mood < len(mood_descriptions) else "Unknown"
+
+
 # Mood Detection Model
-def create_mood_model(num_classes=7):
-    base_model = VGG16(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-    for layer in base_model.layers:
-        layer.trainable = False
-
-    x = base_model.output
-    x = Flatten()(x)
-    x = Dense(1024, activation='relu')(x)
-    x = Dropout(0.5)(x)
-    predictions = Dense(num_classes, activation='softmax')(x)
-
-    model = Model(inputs=base_model.input, outputs=predictions)
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return model
 
 
 class WebSocketManager:
@@ -47,11 +38,7 @@ class WebSocketManager:
         self.locations = {}
 
     async def register(self, websocket, data):
-        if data["state"] == "apk":
-            self.apk_clients.add(websocket)
-            self.locations[websocket] = (data["latitude"], data["longitude"])
-        else:
-            self.web_clients.add(websocket)
+        self.web_clients.add(websocket)
 
     async def unregister(self, websocket):
         # Removing the websocket and updating locations if it's an APK client
@@ -61,67 +48,104 @@ class WebSocketManager:
         elif websocket in self.web_clients:
             self.web_clients.remove(websocket)
 
-    async def send_to_nearest_client(self, message, camera_location):
-        self.refresh_clients()
-        nearest_client, _ = self.find_nearest_client(camera_location)
-        if nearest_client:
-            if nearest_client.open:
-                await nearest_client.send(message)
-
     async def send_to_all(self, message):
         for web_client in self.web_clients:
             if web_client.open:
                 await web_client.send(message)
 
-    def find_nearest_client(self, camera_location):
-        nearest_distance = float("inf")
-        nearest_client = None
-        for ws, location in self.locations.items():
-            if not isinstance(location, tuple) or len(location) != 2:
-                continue
-
-            try:
-                lat, long = float(location[0]), float(location[1])
-            except ValueError:
-                continue
-
-            location = (lat, long)
-            distance = geodesic(camera_location, location).kilometers
-
-            if distance < nearest_distance:
-                nearest_distance = distance
-                nearest_client = ws
-
-        return nearest_client, nearest_distance
-
-    def refresh_clients(self):
-        for ws in list(self.apk_clients):
-            if not ws.open:
-                self.apk_clients.remove(ws)
-
 
 class FaceRecognition:
-    def __init__(self, main_stream, mood_model):
+    def __init__(self, main_stream):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.index = main_stream.index
         self.known_face_names = main_stream.known_face_names
         self.face_model = main_stream.face_model
-        self.mood_model = mood_model
+        self.mood_model = self.create_mood_model()
+        self.mood_labels = [
+            "jahldorlik",
+            "behuzur",
+            "xavotir",
+            "xursandchilik",
+            "gamgin",
+            "xayron",
+            "neytral",
+        ]
+        self.current_frame = None
+        try:
+            self.mood_model.load_weights("./model.h5")
+        except Exception as e:
+            print(f"Не удалось загрузить веса модели: {e}")
+            raise
 
-    async def process_face(self, face):
-        # Face recognition logic
-        embedding = face.embedding
-        similarity, index = self.index.search(embedding.reshape(1, -1), 1)
-        detected_face_name = None
-        if similarity[0, 0] < 500:
-            detected_face_name = self.known_face_names[index[0, 0]]
+    def create_mood_model(self):
+        try:
+            gpus = tf.config.experimental.list_physical_devices("GPU")
+            if gpus:
+                tf.config.experimental.set_visible_devices(gpus[0], "GPU")
+                logical_gpus = tf.config.experimental.list_logical_devices("GPU")
+                print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            print(f"Ошибка при настройке GPU: {e}")
 
-        # Mood detection logic
-        face_image = cv2.resize(face.image, (224, 224))  # Resize to match the mood model input size
-        face_image = np.expand_dims(face_image, axis=0)  # Add batch dimension
-        mood_prediction = self.mood_model.predict(face_image)
-        mood = np.argmax(mood_prediction)
+        emotion_model = tf.keras.models.Sequential()
+        emotion_model.add(
+            tf.keras.layers.Conv2D(
+                64, (5, 5), activation="relu", input_shape=(48, 48, 1)
+            )
+        )
+        emotion_model.add(
+            tf.keras.layers.MaxPooling2D(pool_size=(5, 5), strides=(2, 2))
+        )
+        emotion_model.add(tf.keras.layers.Conv2D(64, (3, 3), activation="relu"))
+        emotion_model.add(tf.keras.layers.Conv2D(64, (3, 3), activation="relu"))
+        emotion_model.add(
+            tf.keras.layers.AveragePooling2D(pool_size=(3, 3), strides=(2, 2))
+        )
+        emotion_model.add(tf.keras.layers.Conv2D(128, (3, 3), activation="relu"))
+        emotion_model.add(tf.keras.layers.Conv2D(128, (3, 3), activation="relu"))
+        emotion_model.add(
+            tf.keras.layers.AveragePooling2D(pool_size=(3, 3), strides=(2, 2))
+        )
+        emotion_model.add(tf.keras.layers.Flatten())
+        emotion_model.add(tf.keras.layers.Dense(1024, activation="relu"))
+        emotion_model.add(tf.keras.layers.Dropout(0.2))
+        emotion_model.add(tf.keras.layers.Dense(1024, activation="relu"))
+        emotion_model.add(tf.keras.layers.Dropout(0.2))
+        emotion_model.add(tf.keras.layers.Dense(7, activation="softmax"))
+        return emotion_model
 
-        return (detected_face_name, mood) if detected_face_name else (None, mood)
+    async def process_face_and_mood(self, face):
+        try:
+            start = time.time()
+            box = face['bbox'].astype(int)
+            embedding = face['embedding']
+            face_image = self.current_frame[box[1]:box[3], box[0]:box[2]]
+            if face_image.size == 0:
+                return None, None, None
+            face_image_resized_id = cv2.resize(face_image, (640, 480))
+            face_image_normalized_id = face_image_resized_id / 255.0
+            face_tensor = (
+                torch.tensor(face_image_normalized_id.transpose((2, 0, 1)))
+                .float()
+                .to(self.device)
+                .unsqueeze(0)
+            )
+            D, I = self.index.search(embedding.reshape(1, -1), 1)
+            name = self.known_face_names[I[0, 0]] if D[0, 0] < 600 else "Unknown"
+            face_image_resized_mood = cv2.resize(face_image, (48, 48))
+            if face_image_resized_mood.shape[2] == 3:
+                face_image_resized_mood = cv2.cvtColor(face_image_resized_mood, cv2.COLOR_RGB2GRAY)
+            face_image_normalized_mood = face_image_resized_mood / 255.0
+            face_image_reshaped_mood = np.reshape(face_image_normalized_mood, (1, 48, 48, 1))
+            emotion = self.mood_labels[
+                np.argmax(self.mood_model.predict(face_image_reshaped_mood, verbose=0))
+            ]
+            end = time.time()
+            return name, emotion, end - start
+
+        except Exception as e:
+            print(f"Error in processing face: {e}")
+            return None, None, None
 
 
 class AlertManager:
@@ -132,50 +156,19 @@ class AlertManager:
         self.mood_last_seen = {}
         self.database = Database()
 
-    async def handle_alert(self, detected_face, mood, frame, url):
+    async def handle_alert(self, detected_face, mood, url):
         now = datetime.now()
         last_alert_time = self.last_alert_time.get(detected_face, datetime.min)
         time_since_last_alert = (now - last_alert_time).total_seconds()
 
         time_since_last_seen = (now - self.face_last_seen.get(detected_face, datetime.min)).total_seconds()
-        mood_since_last_seen = self.mood_last_seen.get(detected_face, "Unknown")
-
         if time_since_last_seen > 5 and time_since_last_alert > 3:
-            mood_description = self.convert_mood_to_description(mood)
-            if mood_description != mood_since_last_seen:
-                await self.send_mood_update(detected_face, mood_description, url)
-                self.mood_last_seen[detected_face] = mood_description
-
-            await self.send_alert(detected_face, url)
-            year, month, day = datetime.now().timetuple()[:3]
-            path = f"../media/screenshots/criminals/{detected_face}/{year}/{month}/{day}"
-            image_name = save_screenshot(frame, path=path, camera_url=url)
-            camera_object = self.database.get_camera(url)
-            if camera_object:
-                camera_object = camera_object[0]
-            self.database.insert_records(
-                image=f"{host_address}{image_name[2:]}",
-                date_recorded=datetime.now(),
-                criminal=int(detected_face),
-                camera=camera_object
-            )
+            await self.send_alert(detected_face, url, mood)
             self.last_alert_time[detected_face] = now
 
         self.face_last_seen[detected_face] = now
 
-    def convert_mood_to_description(self, mood):
-        mood_descriptions = ["Happy", "Sad", "Angry", "Surprised", "Neutral", "Scared", "Disgusted"]
-        return mood_descriptions[mood] if 0 <= mood < len(mood_descriptions) else "Unknown"
-
-    async def send_mood_update(self, detected_face, mood, url):
-        message = {
-            "id": detected_face,
-            "mood": mood,
-            "url": url
-        }
-        await self.websocket_manager.send_to_all(json.dumps(message))
-
-    async def send_alert(self, detected_face, url):
+    async def send_alert(self, detected_face, url, mood):
         details = self.database.get_details(detected_face)
         camera = self.database.get_camera(url)
         camera_details = camera or None
@@ -183,30 +176,25 @@ class AlertManager:
             "id": camera_details[0],
             "name": camera_details[1],
             "url": camera_details[2],
-            "longitude": camera_details[3],
-            "latitude": camera_details[4],
-            "image": host_address + "/media/" + camera_details[-1]
+            "image": camera_details[-1]
         }
         context = {
-            "id": details[0],
-            "first_name": details[1],
-            "last_name": details[2],
-            "middle_name": details[-1],
-            "age": details[3],
-            "description": details[4],
-            "date_joined": str(details[5]),
-            "image": host_address + "/media/criminals/" + str(details[0]) + "/main.jpg",
-            "url": url,
+            "raw": str(details),
+            # "first_name": details[1],
+            # "last_name": details[2],
+            # "middle_name": details[-1],
+            # "age": details[3],
+            # "description": details[4],
+            # "date_joined": str(details[5]),
+            # "image": host_address + "/media/employees/" + str(details[0]) + "/main.jpg",
+            # "url": url,
             "camera": camera_context,
+            "mood": mood
         }
-
         await self.websocket_manager.send_to_all(
             json.dumps(context)
         )
-        await self.websocket_manager.send_to_nearest_client(
-            json.dumps(context),
-            camera_location=(camera_context["longitude"], camera_context["latitude"])
-        )
+        print(context)
 
 
 class MainStream:
@@ -219,17 +207,16 @@ class MainStream:
         self.known_face_names = self.trainer.known_face_names
         self.face_model = self.trainer.face_model
         self.alert_manager = AlertManager(self.websocket_manager)
-        self.mood_model = create_mood_model()  # Initialize mood model
-        self.face_recognition = FaceRecognition(self, self.mood_model)
+        self.face_recognition = FaceRecognition(self)
 
     async def detect_and_process_faces(self, frame, url):
+        self.face_recognition.current_frame = frame
         faces = self.face_model.get(frame)
-        results = await asyncio.gather(
-            *(self.face_recognition.process_face(face) for face in faces)
-        )
-        for name, mood in results:
-            if name:
-                await self.alert_manager.handle_alert(name, mood, frame, url)
+        tasks = [self.face_recognition.process_face_and_mood(face) for face in faces]
+        results = await asyncio.gather(*tasks)
+        for name, mood, elapsed_time in results:
+            print("First name: {}, Mood: {}, Elapsed time: {}".format(name, mood, elapsed_time))
+            await self.alert_manager.handle_alert(name, mood, url)
 
     async def continuous_stream_faces(self, url):
         cap = VideoStream(url).start()
@@ -272,18 +259,16 @@ async def websocket_server(websocket, path):
         await manager.register(websocket, data)
 
         while True:
-            # Here you can add any additional message handling logic if needed
             await asyncio.sleep(10)
 
-    except websockets.exceptions.ConnectionClosedError as e:
+    except websockets.exceptions.ConnectionClosedError:
         await manager.unregister(websocket)
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         await manager.unregister(websocket)
     finally:
         await manager.unregister(websocket)
 
 
-# Function to list all image paths in a specific directory
 def list_image_paths(directory):
     relative_paths = [os.path.join(directory, f) for f in os.listdir(directory) if
                       os.path.isfile(os.path.join(directory, f))]
@@ -291,7 +276,7 @@ def list_image_paths(directory):
     return absolute_paths
 
 
-async def send_image_paths(websocket, path):
+async def send_image_paths(websocket, path):  # type: ignore
     sent_image_paths = set()
     connection_time = datetime.now()
     screenshots_dir = "../media/screenshots/suspends/"
@@ -309,7 +294,6 @@ async def send_image_paths(websocket, path):
                 camera_object = database.get_by_similar(camera_url)
                 image_url = file_path.replace('../', host_address + "/", 1)
                 camera_object["image"] = host_address + "/media/" + camera_object.get("image")
-                print(camera_object["image"])
                 message = {"image_path": image_url, "camera_object": camera_object}
                 await websocket.send(json.dumps(message))
                 sent_image_paths.add(file_path)
@@ -327,11 +311,11 @@ async def main():
     image_server = await websockets.serve(image_path_server, "0.0.0.0", 5678)
     ws_server = await websockets.serve(websocket_server, "0.0.0.0", 5000)
     camera_task = await stream.multiple_cameras()
-    await asyncio.gather(ws_server, image_server, camera_task)
+    await asyncio.gather(ws_server, image_server, camera_task)  # type: ignore
 
 
 if __name__ == "__main__":
     database = Database()
-    camera_urls = database.get_camera_urls()
-    stream = MainStream(absolute_path + "/criminals/", camera_urls)
+    urls = database.get_camera_urls()
+    stream = MainStream(absolute_path + "employees/", urls)
     asyncio.run(main())
