@@ -110,33 +110,30 @@ class FaceRecognition:
 
     async def process_face_and_mood(self, face):
         try:
-            start = time.time()
             box = face['bbox'].astype(int)
             embedding = face['embedding']
             face_image = self.current_frame[box[1]:box[3], box[0]:box[2]]
             if face_image.size == 0:
                 return None, None, None
-            face_image_resized_id = cv2.resize(face_image, (640, 480))
-            face_image_normalized_id = face_image_resized_id / 255.0
-            face_tensor = (
-                torch.tensor(face_image_normalized_id.transpose((2, 0, 1)))
-                .float()
-                .to(self.device)
-                .unsqueeze(0)
-            )
+
+            # Identity Detection
             D, I = self.index.search(embedding.reshape(1, -1), 1)
-            name = self.known_face_names[I[0, 0]] if D[0, 0] < 600 else "Unknown"
-            face_image_resized_mood = cv2.resize(face_image, (48, 48))
-            if face_image_resized_mood.shape[2] == 3:
-                face_image_resized_mood = cv2.cvtColor(face_image_resized_mood, cv2.COLOR_RGB2GRAY)
-            face_image_normalized_mood = face_image_resized_mood / 255.0
-            face_image_reshaped_mood = np.reshape(face_image_normalized_mood, (1, 48, 48, 1))
-            mood_probabilities = self.mood_model.predict(face_image_reshaped_mood, verbose=0)[0]
-            mood_percentages = {
-                mood: round(float(prob) * 100, 2) for mood, prob in zip(self.mood_labels, mood_probabilities)
-            }
-            end = time.time()
-            return name, mood_percentages, end - start
+            if D[0, 0] < 600:
+                name = self.known_face_names[I[0, 0]]
+
+                # Mood Detection (only if the face is recognized)
+                face_image_resized_mood = cv2.resize(face_image, (48, 48))
+                if face_image_resized_mood.shape[2] == 3:
+                    face_image_resized_mood = cv2.cvtColor(face_image_resized_mood, cv2.COLOR_RGB2GRAY)
+                face_image_normalized_mood = face_image_resized_mood / 255.0
+                face_image_reshaped_mood = np.reshape(face_image_normalized_mood, (1, 48, 48, 1))
+                mood_probabilities = self.mood_model.predict(face_image_reshaped_mood, verbose=0)[0]
+                mood_percentages = {
+                    mood: round(float(prob) * 100, 2) for mood, prob in zip(self.mood_labels, mood_probabilities)
+                }
+                return name, mood_percentages, None
+            else:
+                return None, None, None
 
         except Exception as e:
             print(f"Error in processing face: {e}")
