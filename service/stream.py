@@ -34,19 +34,13 @@ tracemalloc.start()
 class WebSocketManager:
     def __init__(self):
         self.web_clients = set()
-        self.apk_clients = set()
         self.locations = {}
 
     async def register(self, websocket, data):
         self.web_clients.add(websocket)
 
     async def unregister(self, websocket):
-        # Removing the websocket and updating locations if it's an APK client
-        if websocket in self.apk_clients:
-            self.apk_clients.remove(websocket)
-            del self.locations[websocket]
-        elif websocket in self.web_clients:
-            self.web_clients.remove(websocket)
+        self.web_clients.remove(websocket)
 
     async def send_to_all(self, message):
         for web_client in self.web_clients:
@@ -137,11 +131,12 @@ class FaceRecognition:
                 face_image_resized_mood = cv2.cvtColor(face_image_resized_mood, cv2.COLOR_RGB2GRAY)
             face_image_normalized_mood = face_image_resized_mood / 255.0
             face_image_reshaped_mood = np.reshape(face_image_normalized_mood, (1, 48, 48, 1))
-            emotion = self.mood_labels[
-                np.argmax(self.mood_model.predict(face_image_reshaped_mood, verbose=0))
-            ]
+            mood_probabilities = self.mood_model.predict(face_image_reshaped_mood, verbose=0)[0]
+            mood_percentages = {
+                mood: round(float(prob) * 100, 2) for mood, prob in zip(self.mood_labels, mood_probabilities)
+            }
             end = time.time()
-            return name, emotion, end - start
+            return name, mood_percentages, end - start
 
         except Exception as e:
             print(f"Error in processing face: {e}")
@@ -215,8 +210,7 @@ class MainStream:
         tasks = [self.face_recognition.process_face_and_mood(face) for face in faces]
         results = await asyncio.gather(*tasks)
         for name, mood, elapsed_time in results:
-            print("First name: {}, Mood: {}, Elapsed time: {}".format(name, mood, elapsed_time))
-            await self.alert_manager.handle_alert(name, mood, url)
+            await self.alert_manager.handle_alert(detected_face=name, mood=mood, url=url)
 
     async def continuous_stream_faces(self, url):
         cap = VideoStream(url).start()
