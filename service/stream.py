@@ -301,12 +301,12 @@ async def image_path_server(websocket, path):
 async def main():
     image_server = await websockets.serve(image_path_server, "0.0.0.0", 5678)
     ws_server = await websockets.serve(websocket_server, "0.0.0.0", 5000)
-    camera_task = await stream.multiple_cameras()
-    await asyncio.gather(ws_server, image_server, camera_task)  # type: ignore
+    camera_streams = [await stream.continuous_stream_faces(url) for url in stream.urls]
+    await asyncio.gather(ws_server, image_server, *camera_streams)
 
 
 if __name__ == "__main__":
     database = Database()
-    urls = database.get_camera_urls()
-    stream = MainStream(absolute_path + "employees/", urls)
+    camera_urls = database.get_camera_urls()
+    stream = MainStream(absolute_path + "/employees/", camera_urls)
     asyncio.run(main())
