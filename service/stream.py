@@ -145,48 +145,47 @@ class AlertManager:
         self.websocket_manager = websocket_manager
         self.last_alert_time = {}
         self.face_last_seen = {}
-        self.mood_last_seen = {}
+        self.mood_data = {}  # Store mood data for a duration
+        self.mood_last_updated = {}  # Timestamp of the last mood update
+        self.mood_printed = {}  # Track if mood has been printed
         self.database = Database()
+        self.identity_printed = {}
+
+    def collect_moods(self, mood_list):
+        # Return the collected list of moods
+        return mood_list
 
     async def handle_alert(self, detected_face, mood, url):
-        now = datetime.now()
-        last_alert_time = self.last_alert_time.get(detected_face, datetime.min)
-        time_since_last_alert = (now - last_alert_time).total_seconds()
+        now = time.time()
 
-        time_since_last_seen = (now - self.face_last_seen.get(detected_face, datetime.min)).total_seconds()
-        if time_since_last_seen > 5 and time_since_last_alert > 3:
-            await self.send_alert(detected_face, url, mood)
-            self.last_alert_time[detected_face] = now
+        # Check if this is a new face or if the face has reappeared after 5 seconds
+        last_seen = self.face_last_seen.get(detected_face)
+        if last_seen is None or now - last_seen >= 5:
+            # New or reappeared face: print identity and reset mood data
+            print(f"Identity: {detected_face}")
+            await self.websocket_manager.send_to_all(json.dumps({"identity": detected_face}))
+            self.mood_data[detected_face] = []
+            self.mood_last_updated[detected_face] = now
+            self.mood_printed[detected_face] = False
 
+        # Update last seen time
         self.face_last_seen[detected_face] = now
 
-    async def send_alert(self, detected_face, url, mood):
-        details = self.database.get_details(detected_face)
-        camera = self.database.get_camera(url)
-        camera_details = camera or None
-        camera_context = {
-            "id": camera_details[0],
-            "name": camera_details[1],
-            "url": camera_details[2],
-            "image": camera_details[-1]
-        }
-        context = {
-            "raw": str(details),
-            # "first_name": details[1],
-            # "last_name": details[2],
-            # "middle_name": details[-1],
-            # "age": details[3],
-            # "description": details[4],
-            # "date_joined": str(details[5]),
-            # "image": host_address + "/media/employees/" + str(details[0]) + "/main.jpg",
-            # "url": url,
-            "camera": camera_context,
-            "mood": mood
-        }
-        await self.websocket_manager.send_to_all(
-            json.dumps(context)
-        )
-        print(context)
+        if mood:
+            # Append mood data
+            self.mood_data[detected_face].append(mood)
+
+            # Check if 2 seconds have passed since the face was first seen
+            if now - self.mood_last_updated[detected_face] >= 2 and not self.mood_printed[detected_face]:
+                # Collect and print mood data
+                collected_moods = self.collect_moods(self.mood_data[detected_face])
+                await self.websocket_manager.send_to_all(
+                    json.dumps({"identified": detected_face, "mood": collected_moods}))
+                print(f"Moods for {detected_face}: {collected_moods}")
+
+                # Mark the mood as printed and clear the mood data
+                self.mood_printed[detected_face] = True
+                self.mood_data[detected_face] = []
 
 
 class MainStream:
@@ -207,11 +206,12 @@ class MainStream:
         tasks = [self.face_recognition.process_face_and_mood(face) for face in faces]
         results = await asyncio.gather(*tasks)
         for name, mood, elapsed_time in results:
-            await self.alert_manager.handle_alert(detected_face=name, mood=mood, url=url)
+            if name is not None:
+                await self.alert_manager.handle_alert(detected_face=name, mood=mood, url=url)
 
     async def continuous_stream_faces(self, url):
         cap = VideoStream(url).start()
-        screenshot_interval = 5  # Interval to take a screenshot in seconds
+        screenshot_interval = 5
         last_screenshot_time = time.time()
         try:
             while True:
