@@ -6,7 +6,7 @@ import tracemalloc
 from datetime import datetime
 
 import websockets
-import cv2
+import cv2 
 import numpy as np
 # from geopy.distance import geodesic
 from imutils.video import VideoStream
