@@ -1,5 +1,6 @@
-from django.db import models
 from django.core.files.storage import FileSystemStorage
+from django.contrib.postgres.fields import ArrayField
+from django.db import models
 
 
 def employee_image_path(instance, filename):
@@ -38,3 +39,13 @@ class Camera(models.Model):
     image = models.ImageField(upload_to='media/cameras/', blank=True)
 
 
+class FaceEncoding(models.Model):
+    # You can add other fields here as needed
+    name = models.CharField(max_length=100)
+    encoding = ArrayField(
+        models.FloatField(),  # Assuming each encoding is a list of floats
+        size=128,  # Specify the size if you know the length of the encoding array
+    )
+
+    def __str__(self):
+        return self.name

@@ -4,12 +4,13 @@ import cv2
 import os
 import numpy as np
 import faiss
+import asyncio
 
 
 class FaceTrainer:
     def __init__(self, root_dir):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        self.root_dir = root_dir
         try:
             self.face_model = insightface.app.FaceAnalysis()
             ctx_id = 0
@@ -45,6 +46,19 @@ class FaceTrainer:
         index = faiss.IndexFlatL2(known_face_encodings.shape[1])
         index.add(known_face_encodings)
         return index, known_face_names
+
+    async def update_face_encodings(self, interval_seconds=3600):
+        """Asynchronously update face encodings at a set interval."""
+        while True:
+            try:
+                print("Updating face encodings...")
+                self.index, self.known_face_names = self.load_face_encodings(self.root_dir)
+                print("Length of face encodings: ", len(self.known_face_names))
+                print("Face encodings updated.")
+            except Exception as e:
+                print(f"Error updating face encodings: {e}")
+
+            await asyncio.sleep(interval_seconds)
 
     @property
     def get_face_model(self):

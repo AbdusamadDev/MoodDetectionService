@@ -14,7 +14,7 @@ import os
 
 import tensorflow as tf
 from models import Database
-from path import absolute_path
+from path import abs_path
 from train import FaceTrainer
 from utils import save_screenshot, host_address
 
@@ -277,19 +277,32 @@ async def image_path_server(websocket, path):
 
 
 async def main():
+
+    # Initialize the database, URLs, and main stream
+    database = Database()
+    urls = database.get_camera_urls()
+    stream = MainStream(abs_path() + "media/employees", urls)
+
+    # Create WebSocket server tasks
     ws_server = await websockets.serve(websocket_server, "0.0.0.0", 5000)
     image_server = await websockets.serve(image_path_server, "0.0.0.0", 5678)
 
-    # Start the camera streams
-    await stream.start_camera_streams()
+    # Start the camera streams task
+    camera_streams_task = asyncio.create_task(stream.start_camera_streams())
 
-    # Wait for the WebSocket servers to close
-    await asyncio.gather(ws_server.wait_closed(), image_server.wait_closed())
+    # Start the face encoding update task with a specified interval, e.g., 3600 seconds (1 hour)
+    face_encoding_update_task = asyncio.create_task(
+        stream.trainer.update_face_encodings(interval_seconds=10)
+    )
 
+    # Gather and run all the tasks
+    await asyncio.gather(
+        ws_server.wait_closed(),
+        image_server.wait_closed(),
+        camera_streams_task,
+        face_encoding_update_task
+    )
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    database = Database()
-    urls = database.get_camera_urls()
-    stream = MainStream(absolute_path + "/employees/", urls)
     asyncio.run(main())
