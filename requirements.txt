@@ -11,3 +11,6 @@ django-filter
 psycopg2
 onnxruntime-gpu
 python-dotenv
+celery
+redis
+psutil
