@@ -14,3 +14,4 @@ python-dotenv
 celery
 redis
 psutil
+django

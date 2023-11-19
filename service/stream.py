@@ -190,58 +190,33 @@ class MainStream:
         self.face_model = self.trainer.face_model
         self.alert_manager = AlertManager(self.websocket_manager)
         self.face_recognition = FaceRecognition(self)
+        self.processing_queue = asyncio.Queue()  # Queue for processing frames
 
-    async def detect_and_process_faces(self, frame, url):
-        self.face_recognition.current_frame = frame
-        faces = self.face_model.get(frame)
-        tasks = [self.face_recognition.process_face_and_mood(face) for face in faces]
-        results = await asyncio.gather(*tasks)
-        for name, mood, elapsed_time in results:
-            if name is not None:
-                await self.alert_manager.handle_alert(detected_face=name, mood=mood, url=url)
-
-    async def continuous_stream_faces(self, url):
-        logging.info(f"Attempting to connect to camera: {url}")
+    async def capture_and_send_frames(self, url):
+        """ Captures frames and sends them to the processing queue. """
         cap = VideoStream(url).start()
-        logging.info(f"Connected to camera: {url}")
-
-        screenshot_interval = 5
-        last_screenshot_time = time.time()
-
-        try:
-            while True:
-                await asyncio.sleep(0)  # Yield control to the event loop
-                frame = cap.read()
-                if frame is None:
-                    continue
-
-                current_time = time.time()
-                if current_time - last_screenshot_time >= screenshot_interval:
-                    save_screenshot(frame, path="../media/screenshots/suspends", camera_url=url)
-                    last_screenshot_time = current_time
-
-                await self.detect_and_process_faces(frame, url)
-        except (KeyboardInterrupt, websockets.exceptions.ConnectionClosedError):
-            print("Connection closed")
-        finally:
-            cap.stop()
-
-    async def handle_camera_stream(self, url):
-        logging.info(f"Starting camera stream task for URL: {url}")
         while True:
-            try:
-                await self.continuous_stream_faces(url)
-                logging.info(f"Finished streaming for URL (will restart): {url}")
-            except Exception as e:
-                logging.error(f"Error with camera {url}: {e}")
-            await asyncio.sleep(1)  # Short delay before retrying the connection
+            frame = cap.read()
+            if frame is not None:
+                await self.processing_queue.put((frame, url))  # Send frame along with its URL
+            await asyncio.sleep(0.1)
+
+    async def process_frames(self):
+        """ Processes frames from all cameras. """
+        while True:
+            frame, url = await self.processing_queue.get()
+            self.face_recognition.current_frame = frame
+            faces = self.face_model.get(frame)
+            tasks = [self.face_recognition.process_face_and_mood(face) for face in faces]
+            results = await asyncio.gather(*tasks)
+            for name, mood, _ in results:
+                if name is not None:
+                    await self.alert_manager.handle_alert(name, mood, url)
 
     async def start_camera_streams(self):
-        """Start streaming tasks for all cameras."""
-        tasks = []
-        for url in self.urls:
-            task = asyncio.create_task(self.handle_camera_stream(url))
-            tasks.append(task)
+        """Start frame capture tasks for all cameras and the central processing task."""
+        tasks = [asyncio.create_task(self.capture_and_send_frames(url)) for url in self.urls]
+        tasks.append(asyncio.create_task(self.process_frames()))
         await asyncio.gather(*tasks)
 
 
@@ -304,13 +279,17 @@ async def image_path_server(websocket, path):
 async def main():
     ws_server = await websockets.serve(websocket_server, "0.0.0.0", 5000)
     image_server = await websockets.serve(image_path_server, "0.0.0.0", 5678)
-    camera_stream_tasks = [asyncio.create_task(stream.handle_camera_stream(url)) for url in stream.urls]
-    await asyncio.gather(*(camera_stream_tasks + [ws_server.wait_closed(), image_server.wait_closed()]))
+
+    # Start the camera streams
+    await stream.start_camera_streams()
+
+    # Wait for the WebSocket servers to close
+    await asyncio.gather(ws_server.wait_closed(), image_server.wait_closed())
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     database = Database()
-    camera_urls = database.get_camera_urls()
-    stream = MainStream(absolute_path + "/employees/", camera_urls)
+    urls = database.get_camera_urls()
+    stream = MainStream(absolute_path + "/employees/", urls)
     asyncio.run(main())
