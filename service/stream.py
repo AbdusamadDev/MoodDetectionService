@@ -16,6 +16,7 @@ import tensorflow as tf
 from models import Database
 from path import abs_path
 from train import FaceTrainer
+from multiprocessing import Process
 from utils import save_screenshot, host_address
 
 tracemalloc.start()
@@ -198,7 +199,7 @@ class MainStream:
         while True:
             frame = cap.read()
             if frame is not None:
-                await self.processing_queue.put((frame, url))  # Send frame along with its URL
+                await self.processing_queue.put((frame, url))
             await asyncio.sleep(0.1)
 
     async def process_frames(self):
@@ -212,6 +213,15 @@ class MainStream:
             for name, mood, _ in results:
                 if name is not None:
                     await self.alert_manager.handle_alert(name, mood, url)
+
+    async def reload_face_encodings_periodically(self):
+        while True:
+            print("Reloading face encodings...")
+            self.index, self.known_face_names = self.trainer.load_face_encodings(self.trainer.root_dir)
+            self.face_recognition.index, self.face_recognition.known_face_names = self.trainer.load_face_encodings(
+                self.trainer.root_dir)
+            print("Length of face encodings: ", len(self.face_recognition.known_face_names))
+            await asyncio.sleep(10)
 
     async def start_camera_streams(self):
         """Start frame capture tasks for all cameras and the central processing task."""
@@ -277,32 +287,27 @@ async def image_path_server(websocket, path):
 
 
 async def main():
-
-    # Initialize the database, URLs, and main stream
-    database = Database()
-    urls = database.get_camera_urls()
-    stream = MainStream(abs_path() + "media/employees", urls)
-
     # Create WebSocket server tasks
     ws_server = await websockets.serve(websocket_server, "0.0.0.0", 5000)
     image_server = await websockets.serve(image_path_server, "0.0.0.0", 5678)
 
     # Start the camera streams task
     camera_streams_task = asyncio.create_task(stream.start_camera_streams())
-
-    # Start the face encoding update task with a specified interval, e.g., 3600 seconds (1 hour)
-    face_encoding_update_task = asyncio.create_task(
-        stream.trainer.update_face_encodings(interval_seconds=10)
-    )
+    reload_encodings_task = asyncio.create_task(stream.reload_face_encodings_periodically())
 
     # Gather and run all the tasks
     await asyncio.gather(
         ws_server.wait_closed(),
         image_server.wait_closed(),
         camera_streams_task,
-        face_encoding_update_task
+        reload_encodings_task,  # Include the new task here
     )
 
+
 if __name__ == "__main__":
+    # Initialize the database, URLs, and main stream
+    database = Database()
+    urls = database.get_camera_urls()
+    stream = MainStream(abs_path() + "media/employees", urls)
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())

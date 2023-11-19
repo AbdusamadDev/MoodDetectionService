@@ -47,18 +47,6 @@ class FaceTrainer:
         index.add(known_face_encodings)
         return index, known_face_names
 
-    async def update_face_encodings(self, interval_seconds=3600):
-        """Asynchronously update face encodings at a set interval."""
-        while True:
-            try:
-                print("Updating face encodings...")
-                self.index, self.known_face_names = self.load_face_encodings(self.root_dir)
-                print("Length of face encodings: ", len(self.known_face_names))
-                print("Face encodings updated.")
-            except Exception as e:
-                print(f"Error updating face encodings: {e}")
-
-            await asyncio.sleep(interval_seconds)
 
     @property
     def get_face_model(self):
