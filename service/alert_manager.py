@@ -41,9 +41,13 @@ class AlertManager:
         if last_seen is None or now - last_seen >= 5:
             # New or reappeared face: print identity and reset mood data
             details = self.database.get_details(detected_face)
-            await self.websocket_manager.send_to_all(json.dumps(details))
+            camera = self.database.get_camera(url)
+            camera["image"] = host_address + "/" + camera.get("image")
+            details["image"] = host_address + "/media/" + details.get("image")
+            context = {"identity": details, "camera": camera}
+            await self.websocket_manager.send_to_all(json.dumps(context))
             print(f"Identity: {details}")
-            self.details = details
+            self.details = context
             self.mood_data[detected_face] = []
             self.mood_last_updated[detected_face] = now
             self.mood_printed[detected_face] = False
@@ -59,7 +63,7 @@ class AlertManager:
             if now - self.mood_last_updated[detected_face] >= 2 and not self.mood_printed[detected_face]:
                 collected_moods = self.calculate_mood_percentages(self.mood_data[detected_face])
                 await self.websocket_manager.send_to_all(
-                    json.dumps({"employee": self.details, "mood": collected_moods}))
+                    json.dumps({**self.details, "mood": collected_moods}))
                 year, month, day = datetime.now().timetuple()[:3]
                 path = (
                     f"../media/screenshots/employees/{detected_face}/{year}/{month}/{day}"
@@ -67,7 +71,7 @@ class AlertManager:
                 filename = save_screenshot(frame, url, path)[2:]
                 camera_object = self.database.get_camera(url)
                 if camera_object:
-                    camera_object = camera_object[0]
+                    camera_object = camera_object.get("id")
 
                 self.database.insert_records(
                     employee=detected_face,
@@ -76,6 +80,6 @@ class AlertManager:
                     mood=collected_moods
                 )
 
-                print(f"Moods for {detected_face}: {collected_moods}")
+                print(f"Moods for {self.details}: {collected_moods}")
                 self.mood_printed[detected_face] = True
                 self.mood_data[detected_face] = []

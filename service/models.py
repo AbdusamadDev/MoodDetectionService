@@ -50,7 +50,11 @@ class Database:
     def get_camera(self, url):
         query = "SELECT * FROM api_camera WHERE url=%s"
         rows = self._execute_query(query, (url,))
-        return rows[0] if rows else None  # Same change as in get_details
+        labels = ["id", "name", "url", "image"]
+        if rows is not None:
+            rows_dict = {label: row for label, row in zip(labels, rows[0])}
+            return rows_dict
+        return None
 
     def get_camera_urls(self):
         query = "SELECT url FROM api_camera"
