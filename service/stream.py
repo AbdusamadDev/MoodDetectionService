@@ -221,6 +221,7 @@ class MainStream:
             self.face_recognition.index, self.face_recognition.known_face_names = self.trainer.load_face_encodings(
                 self.trainer.root_dir)
             print("Length of face encodings: ", len(self.face_recognition.known_face_names))
+            await self.update_camera_streams()
             await asyncio.sleep(10)
 
     async def start_camera_streams(self):
@@ -228,6 +229,16 @@ class MainStream:
         tasks = [asyncio.create_task(self.capture_and_send_frames(url)) for url in self.urls]
         tasks.append(asyncio.create_task(self.process_frames()))
         await asyncio.gather(*tasks)
+
+    async def update_camera_streams(self):
+        new_urls = self.database.get_camera_urls()
+        added_urls = set(new_urls) - set(self.urls)
+
+        if added_urls:
+            print(f"New cameras added: {added_urls}")
+            for url in added_urls:
+                asyncio.create_task(self.capture_and_send_frames(url))
+            self.urls.extend(added_urls)
 
 
 async def websocket_server(websocket, path):
