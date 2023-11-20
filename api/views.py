@@ -2,8 +2,10 @@ from django.http import StreamingHttpResponse
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.views import APIView
 
-from api.models import Employee, Camera
-from api.serializers import EmployeeSerializer, CameraSerializer
+from api.models import Employee, Camera, Records
+from api.serializers import EmployeeSerializer, CameraSerializer, RecordsSerializer
+from api.pagination import CameraPagination, EmployeePagination, RecordsPagination
+from api.filtersets import EmployeeFilter, RecordsFilter, CameraFilter
 
 from imutils.video import VideoStream
 import cv2
@@ -13,11 +15,22 @@ import time
 class EmployeeViewSet(ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
+    filterset_class = EmployeeFilter
+    pagination_class = EmployeePagination
 
 
 class CameraViewSet(ModelViewSet):
     queryset = Camera.objects.all()
     serializer_class = CameraSerializer
+    pagination_class = CameraPagination
+    filterset_class = CameraFilter
+
+
+class RecordsViewSet(ModelViewSet):
+    queryset = Records.objects.all().order_by('-date_recorded')
+    serializer_class = RecordsSerializer
+    pagination_class = RecordsPagination
+    filterset_class = RecordsFilter
 
 
 class VideoStreamAPIView(APIView):

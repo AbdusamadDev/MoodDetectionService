@@ -1,7 +1,6 @@
 from pathlib import Path
 import os
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-w0hv_!^7+)g-s@u$42x$j@+7_jk55c80ob_#vagh!eavw4vbmp'
 DEBUG = True
@@ -17,8 +16,12 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
     'api',
-]
+    "django_filters",
 
+]
+REST_FRAMEWORK = {
+    "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
+}
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

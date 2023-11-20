@@ -10,6 +10,7 @@ class Employee(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     middle_name = models.CharField(max_length=100)
+    age = models.IntegerField(default=0)
     position = models.CharField(max_length=100)
     rank = models.CharField(max_length=100)
     bio = models.TextField(max_length=1000)
