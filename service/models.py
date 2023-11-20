@@ -41,7 +41,11 @@ class Database:
     def get_details(self, employee_id):
         query = "SELECT * FROM api_employee WHERE id=%s"
         rows = self._execute_query(query, (employee_id,))  # Changed parameter name to 'employee_id' for clarity
-        return rows[0] if rows else None  # Return None instead of empty list if no results
+        labels = ["id", "first_name", "last_name", "middle_name", "position", "rank", "bio", "image", "age"]
+        if rows is not None:
+            rows_dict = {label: row for label, row in zip(labels, rows[0])}
+            return rows_dict
+        return None
 
     def get_camera(self, url):
         query = "SELECT * FROM api_camera WHERE url=%s"

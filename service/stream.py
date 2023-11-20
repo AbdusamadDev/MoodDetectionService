@@ -3,20 +3,16 @@ import asyncio
 import json
 import time
 import tracemalloc
-from datetime import datetime
-
 import websockets
 import cv2
 import numpy as np
 import logging
-from imutils.video import VideoStream
-import os
-
 import tensorflow as tf
+from datetime import datetime
+from imutils.video import VideoStream
 from models import Database
 from path import abs_path
 from train import FaceTrainer
-from multiprocessing import Process
 from utils import save_screenshot, host_address
 
 tracemalloc.start()
@@ -26,7 +22,6 @@ logging.basicConfig(level=logging.DEBUG)
 class WebSocketManager:
     def __init__(self):
         self.web_clients = set()
-        self.locations = {}
 
     async def register(self, websocket, data):
         self.web_clients.add(websocket)
@@ -60,7 +55,7 @@ class FaceRecognition:
         try:
             self.mood_model.load_weights("./model.h5")
         except Exception as e:
-            print(f"Не удалось загрузить веса модели: {e}")
+            print(f"Unable to load models: {e}")
             raise
 
     def create_mood_model(self):
@@ -142,6 +137,7 @@ class AlertManager:
         self.mood_printed = {}  # Track if mood has been printed
         self.database = Database()
         self.identity_printed = {}
+        self.details = {}
 
     def calculate_mood_percentages(self, mood_list):
         # Initialize a dictionary to hold the sum of normalized values for each mood
@@ -166,8 +162,10 @@ class AlertManager:
         last_seen = self.face_last_seen.get(detected_face)
         if last_seen is None or now - last_seen >= 5:
             # New or reappeared face: print identity and reset mood data
-            print(f"Identity: {detected_face}")
-            await self.websocket_manager.send_to_all(json.dumps({"identity": detected_face}))
+            details = self.database.get_details(detected_face)
+            await self.websocket_manager.send_to_all(json.dumps(details))
+            print(f"Identity: {details}")
+            self.details = details
             self.mood_data[detected_face] = []
             self.mood_last_updated[detected_face] = now
             self.mood_printed[detected_face] = False
@@ -181,10 +179,9 @@ class AlertManager:
 
             # Check if 2 seconds have passed since the face was first seen
             if now - self.mood_last_updated[detected_face] >= 2 and not self.mood_printed[detected_face]:
-                # Collect and print mood data
                 collected_moods = self.calculate_mood_percentages(self.mood_data[detected_face])
                 await self.websocket_manager.send_to_all(
-                    json.dumps({"identified": detected_face, "mood": collected_moods}))
+                    json.dumps({"employee": self.details, "mood": collected_moods}))
                 year, month, day = datetime.now().timetuple()[:3]
                 path = (
                     f"../media/screenshots/employees/{detected_face}/{year}/{month}/{day}"
@@ -285,64 +282,18 @@ async def websocket_server(websocket, path):
         await manager.unregister(websocket)
 
 
-def list_image_paths(directory):
-    relative_paths = [os.path.join(directory, f) for f in os.listdir(directory) if
-                      os.path.isfile(os.path.join(directory, f))]
-    absolute_paths = [path.replace('../', host_address + "/", 1) for path in relative_paths]
-    return absolute_paths
-
-
-async def send_image_paths(websocket, path):  # type: ignore
-    sent_image_paths = set()
-    connection_time = datetime.now()
-    screenshots_dir = "../media/screenshots/suspends/"
-
-    while True:
-        current_image_files = set(
-            f for f in os.listdir(screenshots_dir) if os.path.isfile(os.path.join(screenshots_dir, f)))
-        current_image_paths = {os.path.join(screenshots_dir, f) for f in current_image_files}
-        new_paths = current_image_paths - sent_image_paths
-        for file_path in new_paths:
-            creation_time = datetime.fromtimestamp(os.path.getctime(file_path))
-            if creation_time > connection_time:
-                image_name = os.path.basename(file_path)
-                camera_url = image_name.split('|')[-1].rstrip('.jpg')
-                camera_object = database.get_by_similar(camera_url)
-                image_url = file_path.replace('../', host_address + "/", 1)
-                camera_object["image"] = host_address + "/media/" + camera_object.get("image")
-                message = {"image_path": image_url, "camera_object": camera_object}
-                await websocket.send(json.dumps(message))
-                sent_image_paths.add(file_path)
-        await asyncio.sleep(5)
-
-
-async def image_path_server(websocket, path):
-    consumer_task = asyncio.ensure_future(send_image_paths(websocket, path))
-    done, pending = await asyncio.wait([consumer_task], return_when=asyncio.FIRST_COMPLETED)
-    for task in pending:
-        task.cancel()
-
-
 async def main():
-    # Create WebSocket server tasks
     ws_server = await websockets.serve(websocket_server, "0.0.0.0", 5000)
-    image_server = await websockets.serve(image_path_server, "0.0.0.0", 5678)
-
-    # Start the camera streams task
     camera_streams_task = asyncio.create_task(stream.start_camera_streams())
     reload_encodings_task = asyncio.create_task(stream.reload_face_encodings_periodically())
-
-    # Gather and run all the tasks
     await asyncio.gather(
         ws_server.wait_closed(),
-        image_server.wait_closed(),
         camera_streams_task,
         reload_encodings_task,  # Include the new task here
     )
 
 
 if __name__ == "__main__":
-    # Initialize the database, URLs, and main stream
     database = Database()
     urls = database.get_camera_urls()
     stream = MainStream(abs_path() + "media/employees", urls)
