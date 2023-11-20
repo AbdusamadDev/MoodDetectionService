@@ -245,7 +245,7 @@ class MainStream:
                 self.trainer.root_dir)
             print("Length of face encodings: ", len(self.face_recognition.known_face_names))
             await self.update_camera_streams()
-            await asyncio.sleep(10)
+            await asyncio.sleep(600)
 
     async def start_camera_streams(self):
         """Start frame capture tasks for all cameras and the central processing task."""
