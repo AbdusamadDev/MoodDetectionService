@@ -11,5 +11,4 @@ router.register(r'cameras', CameraViewSet)
 
 urlpatterns = [
     path('api/', include(router.urls)),
-]
-urlpatterns.extend(static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT))
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

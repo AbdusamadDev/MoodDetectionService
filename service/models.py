@@ -58,7 +58,29 @@ class Database:
         rows = self._execute_query(query, (f"%{partial_url}%",))  # Simplified the like_pattern logic
         return rows[0] if rows else None  # Same change as in get_details and get_camera
 
+    def insert_records(self, employee, camera, screenshot, mood):
+        connection = self._db_connect()
+        cursor = connection.cursor()
+        query = '''
+        INSERT INTO api_mood (jahldorlik, behuzur, xavotir, hursandchilik, gamgin, xayron, neytral)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id;
+        '''
+        cursor.execute(query, tuple(i for i in mood.values()))
+        mood_id = cursor.fetchone()[0]
+        date_recorded = str(datetime.now())
+        cursor.execute(
+            """
+            INSERT INTO api_records 
+            (employee_id, camera_id, screenshot, mood_id, date_recorded) VALUES (%s, %s, %s, %s, %s);
+            """,
+            (employee, camera, screenshot, mood_id, date_recorded)
+        )
+        connection.commit()
+
 
 if __name__ == "__main__":
     database = Database()
-    print(database.get_by_similar("192.168.1.152"))
+    mood = {'jahldorlik': 0.2, 'behuzur': 0.0, 'xavotir': 35.3, 'xursandchilik': 0.0, 'gamgin': 14.61, 'xayron': 0.0,
+            'neytral': 49.88}
+    print(database.insert_records("36", "9", "qweqwe.com", mood))

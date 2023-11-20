@@ -1,5 +1,4 @@
 from django.core.files.storage import FileSystemStorage
-from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 
@@ -36,16 +35,22 @@ class Employee(models.Model):
 class Camera(models.Model):
     name = models.CharField(max_length=100)
     url = models.URLField(max_length=150, null=False)
-    image = models.ImageField(upload_to='media/cameras/', blank=True)
+    image = models.ImageField(upload_to='./cameras/', blank=True)
 
 
-class FaceEncoding(models.Model):
-    # You can add other fields here as needed
-    name = models.CharField(max_length=100)
-    encoding = ArrayField(
-        models.FloatField(),  # Assuming each encoding is a list of floats
-        size=128,  # Specify the size if you know the length of the encoding array
-    )
+class Mood(models.Model):
+    jahldorlik = models.FloatField()
+    behuzur = models.FloatField()
+    xavotir = models.FloatField()
+    hursandchilik = models.FloatField()
+    gamgin = models.FloatField()
+    xayron = models.FloatField()
+    neytral = models.FloatField()
 
-    def __str__(self):
-        return self.name
+
+class Records(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
+    camera = models.ForeignKey(Camera, on_delete=models.CASCADE)
+    screenshot = models.URLField()
+    mood = models.ForeignKey(Mood, on_delete=models.CASCADE)
+    date_recorded = models.DateTimeField(auto_now_add=True)

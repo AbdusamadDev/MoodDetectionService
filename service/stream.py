@@ -143,11 +143,23 @@ class AlertManager:
         self.database = Database()
         self.identity_printed = {}
 
-    def collect_moods(self, mood_list):
-        # Return the collected list of moods
-        return mood_list
+    def calculate_mood_percentages(self, mood_list):
+        # Initialize a dictionary to hold the sum of normalized values for each mood
+        mood_sums = {mood: 0 for mood in mood_list[0].keys()}
+        num_frames = len(mood_list)
 
-    async def handle_alert(self, detected_face, mood, url):
+        # Normalize mood values for each frame and sum them up
+        for frame in mood_list:
+            frame_total = sum(frame.values())
+            for mood, value in frame.items():
+                normalized_value = value / frame_total if frame_total != 0 else 0
+                mood_sums[mood] += normalized_value
+
+        # Calculate the final mood percentages
+        mood_percentages = {mood: round((value / num_frames) * 100, 1) for mood, value in mood_sums.items()}
+        return mood_percentages
+
+    async def handle_alert(self, detected_face, mood, url, frame):
         now = time.time()
 
         # Check if this is a new face or if the face has reappeared after 5 seconds
@@ -170,12 +182,26 @@ class AlertManager:
             # Check if 2 seconds have passed since the face was first seen
             if now - self.mood_last_updated[detected_face] >= 2 and not self.mood_printed[detected_face]:
                 # Collect and print mood data
-                collected_moods = self.collect_moods(self.mood_data[detected_face])
+                collected_moods = self.calculate_mood_percentages(self.mood_data[detected_face])
                 await self.websocket_manager.send_to_all(
                     json.dumps({"identified": detected_face, "mood": collected_moods}))
-                print(f"Moods for {detected_face}: {collected_moods}")
+                year, month, day = datetime.now().timetuple()[:3]
+                path = (
+                    f"../media/screenshots/employees/{detected_face}/{year}/{month}/{day}"
+                )
+                filename = save_screenshot(frame, url, path)[2:]
+                camera_object = self.database.get_camera(url)
+                if camera_object:
+                    camera_object = camera_object[0]
 
-                # Mark the mood as printed and clear the mood data
+                database.insert_records(
+                    employee=detected_face,
+                    camera=camera_object,
+                    screenshot=host_address + filename,
+                    mood=collected_moods
+                )
+
+                print(f"Moods for {detected_face}: {collected_moods}")
                 self.mood_printed[detected_face] = True
                 self.mood_data[detected_face] = []
 
@@ -212,7 +238,7 @@ class MainStream:
             results = await asyncio.gather(*tasks)
             for name, mood, _ in results:
                 if name is not None:
-                    await self.alert_manager.handle_alert(name, mood, url)
+                    await self.alert_manager.handle_alert(name, mood, url, frame=frame)
 
     async def reload_face_encodings_periodically(self):
         while True:
