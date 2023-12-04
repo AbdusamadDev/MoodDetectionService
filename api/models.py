@@ -14,7 +14,7 @@ class Employee(models.Model):
     position = models.CharField(max_length=100)
     rank = models.CharField(max_length=100)
     bio = models.TextField(max_length=1000)
-    image = models.ImageField(upload_to=employee_image_path, null=False)
+    image = models.ImageField(upload_to=employee_image_path, blank=True, null=False)
     date_recorded = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
