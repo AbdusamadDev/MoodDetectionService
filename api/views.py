@@ -13,14 +13,14 @@ import time
 
 
 class EmployeeViewSet(ModelViewSet):
-    queryset = Employee.objects.all()
+    queryset = Employee.objects.all().order_by("-date_created")
     serializer_class = EmployeeSerializer
     filterset_class = EmployeeFilter
     pagination_class = EmployeePagination
 
 
 class CameraViewSet(ModelViewSet):
-    queryset = Camera.objects.all()
+    queryset = Camera.objects.all().order_by("-date_created")
     serializer_class = CameraSerializer
     pagination_class = CameraPagination
     filterset_class = CameraFilter
