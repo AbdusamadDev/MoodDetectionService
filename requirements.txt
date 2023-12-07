@@ -16,3 +16,4 @@ redis
 psutil
 django
 python-jose
+django-cors-headers

@@ -54,12 +54,21 @@ class CameraFilter(django_filters.FilterSet):
     url_contains = django_filters.CharFilter(field_name='url', lookup_expr='icontains')
 
 
+import django_filters
+from django.db.models import Q
+from .models import Records  # Ensure this is your actual model import
+
 class RecordsFilter(django_filters.FilterSet):
     search = django_filters.CharFilter(method='filter_search')
+    date_recorded_year__gte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='year__gte')
+    date_recorded_year__lte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='year__lte')
+    date_recorded_month__gte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='month__gte')
+    date_recorded_month__lte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='month__lte')
+    date_recorded_day__gte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='day__gte')
+    date_recorded_day__lte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='day__lte')
+    date_recorded_hour__gte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='hour__gte')
+    date_recorded_hour__lte = django_filters.NumberFilter(field_name='date_recorded', lookup_expr='hour__lte')
 
-    class Meta:
-        model = Records
-        fields = []
 
     def filter_search(self, queryset, name, value):
         return queryset.filter(
@@ -67,12 +76,10 @@ class RecordsFilter(django_filters.FilterSet):
             Q(employee__last_name__icontains=value) |
             Q(employee__middle_name__icontains=value) |
             Q(employee__bio__icontains=value) |
-            Q(employee__age__icontains=value) |
             Q(employee__rank__icontains=value) |
             Q(camera__name__icontains=value) |
             Q(camera__url__icontains=value) |
             Q(camera__image__icontains=value) |
-            Q(date_recorded__icontains=value) |
             Q(mood__jahldorlik__icontains=value) |
             Q(mood__behuzur__icontains=value) |
             Q(mood__xavotir__icontains=value) |
@@ -82,10 +89,25 @@ class RecordsFilter(django_filters.FilterSet):
             Q(mood__neytral__icontains=value)
         )
 
-    employee = django_filters.NumberFilter()
-    camera = django_filters.NumberFilter()
-    mood = django_filters.NumberFilter()
-    screenshot = django_filters.CharFilter(lookup_expr='iexact')
-    screenshot_contains = django_filters.CharFilter(field_name='screenshot', lookup_expr='icontains')
-    date_recorded_gte = django_filters.DateTimeFilter(field_name='date_recorded', lookup_expr='gte')
-    date_recorded_lte = django_filters.DateTimeFilter(field_name='date_recorded', lookup_expr='lte')
+    class Meta:
+        model = Records
+        fields = {
+            'date_recorded': ['exact', 'year', 'month', 'day', 'hour', 'minute', 'second', 'gte', 'lte'],
+            'employee__first_name': ['exact', 'icontains'],
+            'employee__middle_name': ['exact', 'icontains'],
+            'employee__bio': ['exact', 'icontains'],
+            'employee__rank': ['exact', 'icontains'],
+            'employee__position': ['exact', 'icontains'],
+            'employee__last_name': ['exact', 'icontains'],
+            'employee__age': ['exact', 'gte', 'lte'],
+            'camera__url': ['exact', 'icontains'],
+            'camera__date_recorded': ['exact', 'icontains'],
+            "mood__jahldorlik": ["exact", "icontains"],
+            "mood__behuzur": ["exact", "icontains"],
+            "mood__xavotir": ["exact", "icontains"],
+            "mood__gamgin": ["exact", "icontains"],
+            "mood__xayron": ["exact", "icontains"],
+            "mood__neytral": ["exact", "icontains"],
+            "mood__hursandchilik": ["exact", "icontains"],
+
+        }

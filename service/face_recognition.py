@@ -22,7 +22,7 @@ class FaceRecognition:
         ]
         self.current_frame = None
         try:
-            self.mood_model.load_weights("./models/model.h5")
+            self.mood_model.load_weights("/home/ubuntu/Downloads/MoodDetectionService/service/model.h5")
         except Exception as e:
             print(f"Unable to load models: {e}")
             raise
@@ -91,6 +91,6 @@ class FaceRecognition:
             else:
                 return None, None, None
 
-        except Exception as e:
+        except Exception as e:  
             print(f"Error in processing face: {e}")
             return None, None, None

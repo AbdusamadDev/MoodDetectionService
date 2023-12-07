@@ -3,7 +3,7 @@ from datetime import datetime
 from utils import save_screenshot, host_address
 from models import Database
 import json
-
+from firebase_admin import messaging
 
 class AlertManager:
     def __init__(self, websocket_manager):
@@ -66,17 +66,22 @@ class AlertManager:
                     json.dumps({**self.details, "mood": collected_moods}))
                 year, month, day = datetime.now().timetuple()[:3]
                 path = (
-                    f"../media/screenshots/employees/{detected_face}/{year}/{month}/{day}"
+                    f"/home/ubuntu/Downloads/MoodDetectionService/media/screenshots/employees/{detected_face}/{year}/{month}/{day}"
                 )
                 filename = save_screenshot(frame, url, path)[2:]
+
                 camera_object = self.database.get_camera(url)
                 if camera_object:
                     camera_object = camera_object.get("id")
-
+                new = ""
+                for i in filename.split("/")[4:]:
+                    new += "/" + i
+                print("Filename euqals to: ", new)
+                print("\n\n\n\n\n\n\n\n\n")
                 self.database.insert_records(
                     employee=detected_face,
                     camera=camera_object,
-                    screenshot=host_address + filename,
+                    screenshot=host_address + new,
                     mood=collected_moods
                 )
 

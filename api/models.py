@@ -15,7 +15,7 @@ class Employee(models.Model):
     rank = models.CharField(max_length=100)
     bio = models.TextField(max_length=1000)
     image = models.ImageField(upload_to=employee_image_path, blank=True, null=False)
-    date_recorded = models.DateTimeField(auto_now_add=True)
+    date_recorded = models.DateTimeField(auto_now_add=True, null=True)
 
     def save(self, *args, **kwargs):
         temp_image = self.image
@@ -38,7 +38,7 @@ class Camera(models.Model):
     name = models.CharField(max_length=100)
     url = models.URLField(max_length=150, null=False)
     image = models.ImageField(upload_to='./cameras/', blank=True)
-    date_recorded = models.DateTimeField(auto_now_add=True)
+    date_recorded = models.DateTimeField(auto_now_add=True, null=True)
 
 
 

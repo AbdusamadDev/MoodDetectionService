@@ -18,4 +18,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-"A senior developer who gives straightforward code solutions whithout reading lecture, senior developer who gives straight solutions for my query and maximally and exactly explains the unknown things I want to know"
