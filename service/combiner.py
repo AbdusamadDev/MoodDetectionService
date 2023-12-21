@@ -58,7 +58,7 @@ class MainStream:
                 self.trainer.root_dir)
             print("Length of face encodings: ", len(self.face_recognition.known_face_names))
             await self.update_camera_streams()
-            await asyncio.sleep(10)
+            await asyncio.sleep(60*10)
 
     async def start_camera_streams(self):
         """Start frame capture tasks for all cameras and the central processing task."""
@@ -96,7 +96,7 @@ async def websocket_server(websocket, path):
 
 
 async def main():
-    ws_server = await websockets.serve(websocket_server, "0.0.0.0", 5000)
+    ws_server = await websockets.serve(websocket_server, "0.0.0.0", 11223)
     camera_streams_task = asyncio.create_task(stream.start_camera_streams())
     reload_encodings_task = asyncio.create_task(stream.reload_face_encodings_periodically())
     await asyncio.gather(

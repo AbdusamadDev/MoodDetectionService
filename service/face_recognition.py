@@ -74,7 +74,7 @@ class FaceRecognition:
 
             # Identity Detection
             D, I = self.index.search(embedding.reshape(1, -1), 1)
-            if D[0, 0] < 600:
+            if D[0, 0] < 570:
                 name = self.known_face_names[I[0, 0]]
 
                 # Mood Detection (only if the face is recognized)

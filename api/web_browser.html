@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Browser</title>
+    <script>
+        const wsNearestClient = new WebSocket('ws://localhost:11223');
+        wsNearestClient.onopen = function () {
+            wsNearestClient.send(JSON.stringify({"state": "web" }));
+        };
+        wsNearestClient.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+            console.log(data)
+        };
+
+    </script>
+</head>
+
+<body>
+    <h1>Web Browser Client</h1>
+</body>
+
+</html>

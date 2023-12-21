@@ -36,8 +36,8 @@ class Employee(models.Model):
 
 class Camera(models.Model):
     name = models.CharField(max_length=100)
-    url = models.URLField(max_length=150, null=False)
-    image = models.ImageField(upload_to='./cameras/', blank=True)
+    url = models.CharField(max_length=150, null=False)
+    image = models.ImageField(upload_to='./cameras/', blank=True, null=True)
     date_recorded = models.DateTimeField(auto_now_add=True, null=True)
 
 
