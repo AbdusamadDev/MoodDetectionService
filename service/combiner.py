@@ -66,7 +66,7 @@ class MainStream:
                 "Length of face encodings: ",
                 len(self.face_recognition.known_face_names),
             )
-            await asyncio.sleep(10)
+            await asyncio.sleep(60)
 
     async def start_camera_streams(self):
         """Start frame capture tasks for all cameras and the central processing task."""
@@ -76,7 +76,7 @@ class MainStream:
         tasks.append(asyncio.create_task(self.process_frames()))
         await asyncio.gather(*tasks)
 
-    async def reconnect_cameras_periodically(self, interval=20):
+    async def reconnect_cameras_periodically(self, interval=60):
         print("Reconnect camera url function is called")
         while True:
             print("loop is being executed")
