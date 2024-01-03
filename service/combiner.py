@@ -30,7 +30,7 @@ class MainStream:
         self.processing_queue = asyncio.Queue()  # Queue for processing frames
 
     async def capture_and_send_frames(self, url):
-        """ Captures frames and sends them to the processing queue. """
+        """Captures frames and sends them to the processing queue."""
         cap = VideoStream(url).start()
         while True:
             frame = cap.read()
@@ -39,12 +39,14 @@ class MainStream:
             await asyncio.sleep(0.1)
 
     async def process_frames(self):
-        """ Processes frames from all cameras. """
+        """Processes frames from all cameras."""
         while True:
             frame, url = await self.processing_queue.get()
             self.face_recognition.current_frame = frame
             faces = self.face_model.get(frame)
-            tasks = [self.face_recognition.process_face_and_mood(face) for face in faces]
+            tasks = [
+                self.face_recognition.process_face_and_mood(face) for face in faces
+            ]
             results = await asyncio.gather(*tasks)
             for name, mood, _ in results:
                 if name is not None:
@@ -53,43 +55,56 @@ class MainStream:
     async def reload_face_encodings_periodically(self):
         while True:
             print("Reloading face encodings...")
-            self.index, self.known_face_names = self.trainer.load_face_encodings(self.trainer.root_dir)
-            self.face_recognition.index, self.face_recognition.known_face_names = self.trainer.load_face_encodings(
-                self.trainer.root_dir)
-            print("Length of face encodings: ", len(self.face_recognition.known_face_names))
-            await self.update_camera_streams()
-            await asyncio.sleep(60*10)
+            self.index, self.known_face_names = self.trainer.load_face_encodings(
+                self.trainer.root_dir
+            )
+            (
+                self.face_recognition.index,
+                self.face_recognition.known_face_names,
+            ) = self.trainer.load_face_encodings(self.trainer.root_dir)
+            print(
+                "Length of face encodings: ",
+                len(self.face_recognition.known_face_names),
+            )
+            await self.reconnect_cameras_periodically()
+            await asyncio.sleep(60)
 
     async def start_camera_streams(self):
         """Start frame capture tasks for all cameras and the central processing task."""
-        tasks = [asyncio.create_task(self.capture_and_send_frames(url)) for url in self.urls]
+        tasks = [
+            asyncio.create_task(self.capture_and_send_frames(url)) for url in self.urls
+        ]
         tasks.append(asyncio.create_task(self.process_frames()))
         await asyncio.gather(*tasks)
 
-    async def update_camera_streams(self):
-        new_urls = self.database.get_camera_urls()
-        added_urls = set(new_urls) - set(self.urls)
-
-        if added_urls:
-            print(f"New cameras added: {added_urls}")
-            for url in added_urls:
+    async def reconnect_cameras_periodically(self, interval=60):
+        """Reconnects to all cameras one by one at specified intervals."""
+        while True:
+            for url in database.get_camera_urls():
                 asyncio.create_task(self.capture_and_send_frames(url))
-            self.urls.extend(added_urls)
+            await asyncio.sleep(interval)
 
 
 async def websocket_server(websocket, path):
     manager = stream.websocket_manager
     try:
         message = await websocket.recv()
-        data = json.loads(message) or None
-        await manager.register(websocket, data)
-
+        data = json.loads(message)
+        token = data.get("token", None)
+        if token is not None:
+            if database.is_authenticated(token):
+                await manager.register(websocket, data)
+            else:
+                await websocket.send(json.dumps({"msg": "Invalid token provided!"}))
+                await manager.unregister(websocket)
+        else:
+            await websocket.send(json.dumps({"msg": "Token is not provided!"}))
+            await manager.unregister(websocket)
         while True:
-            await asyncio.sleep(10)
-
-    except websockets.exceptions.ConnectionClosedError:
+            await asyncio.sleep(1000)
+    except websockets.exceptions.ConnectionClosedError as e:  # type: ignore
         await manager.unregister(websocket)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         await manager.unregister(websocket)
     finally:
         await manager.unregister(websocket)
@@ -98,7 +113,9 @@ async def websocket_server(websocket, path):
 async def main():
     ws_server = await websockets.serve(websocket_server, "0.0.0.0", 11223)
     camera_streams_task = asyncio.create_task(stream.start_camera_streams())
-    reload_encodings_task = asyncio.create_task(stream.reload_face_encodings_periodically())
+    reload_encodings_task = asyncio.create_task(
+        stream.reload_face_encodings_periodically()
+    )
     await asyncio.gather(
         ws_server.wait_closed(),
         camera_streams_task,
